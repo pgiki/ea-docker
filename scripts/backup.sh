@@ -63,6 +63,7 @@ $COMPOSE exec -T mysql \
   mysqldump \
     --user="${DB_USERNAME:-easyapp}" \
     --password="${DB_PASSWORD}" \
+    --no-tablespaces \
     --single-transaction \
     --quick \
     --lock-tables=false \

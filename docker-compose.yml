@@ -55,12 +55,14 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+    # Apache + PHP responding (2xx–4xx). Do not use the REST API here — it 404s
+    # until after the web installer / DB setup completes.
     healthcheck:
-      test: ["CMD", "curl", "-fsSL", "http://localhost/index.php/backend/api/v1/availabilities"]
-      interval: 30s
+      test: ["CMD-SHELL", "for p in /index.php /; do c=$(curl -s -o /dev/null -w '%{http_code}' \"http://localhost$$p\"); echo \"$$c\" | grep -qE '^[234]' && exit 0; done; exit 1"]
+      interval: 15s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 8
+      start_period: 120s
 
   # ─── MySQL 8 ────────────────────────────────────────────────────────────────
   mysql:
@@ -141,6 +143,7 @@ services:
       MYSQL_DB:       ${DB_NAME:-easyappointments}
       MYSQL_USER:     ${DB_USERNAME:-easyapp}
       MYSQL_PASS:     ${DB_PASSWORD}
+      MYSQLDUMP_OPTS: --no-tablespaces --single-transaction
       MAX_BACKUPS:    ${BACKUP_RETENTION_DAYS:-14}
       INIT_BACKUP:    1                # run a backup immediately on start
       CRON_TIME:      "${BACKUP_CRON:-0 2 * * *}"  # default: 2 AM daily

@@ -108,6 +108,7 @@ else
       mysqldump \
         --user="${DB_USERNAME:-easyapp}" \
         --password="${DB_PASSWORD}" \
+        --no-tablespaces \
         --single-transaction \
         --routines \
         --triggers \
@@ -195,8 +196,8 @@ $COMPOSE up -d --remove-orphans
 
 step "Running database migrations"
 info "Waiting for the app container to become healthy…"
-for _ in $(seq 1 30); do
-  if $COMPOSE exec -T app curl -fsSL -o /dev/null "http://localhost/index.php/backend/api/v1/availabilities" 2>/dev/null; then
+for _ in $(seq 1 60); do
+  if $COMPOSE exec -T app curl -s -o /dev/null -w '%{http_code}' http://localhost/index.php 2>/dev/null | grep -qE '^[234]'; then
     break
   fi
   sleep 2

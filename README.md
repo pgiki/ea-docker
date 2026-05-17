@@ -217,11 +217,19 @@ See `.env.example` for full comments.
 
 ## Troubleshooting
 
-**App won't start**
+**App won't start / `dependency app failed to start` / unhealthy**
+
+The healthcheck only verifies that Apache serves `/` or `/index.php` (not the REST API). On a **fresh install**, complete the web wizard at your `BASE_URL` before expecting API routes to work.
 
 ```bash
 docker compose logs app --tail=50
+docker compose ps
+# After changing healthcheck in compose: docker compose up -d --force-recreate app caddy
 ```
+
+**Backup: `PROCESS privilege` / tablespaces**
+
+Ensure `MYSQLDUMP_OPTS=--no-tablespaces` is set on the `backup` service (included in current `docker-compose.yml`).
 
 **Caddy / TLS issues**
 
