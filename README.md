@@ -219,13 +219,23 @@ See `.env.example` for full comments.
 
 **App won't start / `dependency app failed to start` / unhealthy**
 
-The healthcheck only verifies that Apache serves `/` or `/index.php` (not the REST API). On a **fresh install**, complete the web wizard at your `BASE_URL` before expecting API routes to work.
-
 ```bash
 docker compose logs app --tail=50
 docker compose ps
-# After changing healthcheck in compose: docker compose up -d --force-recreate app caddy
+docker compose up -d --force-recreate storage-init app caddy
 ```
+
+**HTTP 500 on `/` or `/index.php`**
+
+Usually an **empty `app_storage` volume** — it replaces the image's `storage/` folder (logs, cache, sessions). Seed it:
+
+```bash
+make fix-storage
+# or: ./scripts/fix-storage.sh
+docker compose up -d --force-recreate app caddy
+```
+
+Then open your `BASE_URL` and complete the web installer. For details: `docker compose exec app cat /var/www/html/storage/logs/log-$(date +%Y-%m-%d).php` (with `DEBUG_MODE=TRUE` in `.env`).
 
 **Backup: `PROCESS privilege` / tablespaces**
 

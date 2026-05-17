@@ -5,12 +5,36 @@
 
 services:
 
+  # ─── Seed app_storage volume (runs once when storage is empty) ───────────────
+  # Mounting app_storage hides the image's storage/ tree; an empty volume causes HTTP 500.
+  storage-init:
+    image: alextselegidis/easyappointments:${EA_VERSION:-latest}
+    container_name: easyappointments_storage_init
+    user: root
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        if [ ! -d /mnt/storage/logs ]; then
+          echo "Seeding app_storage from image..."
+          cp -a /var/www/html/storage/. /mnt/storage/
+          chown -R www-data:www-data /mnt/storage
+          echo "Storage volume ready."
+        else
+          echo "Storage volume already initialized, skipping."
+        fi
+    volumes:
+      - app_storage:/mnt/storage
+    restart: "no"
+
   # ─── Application ───────────────────────────────────────────────────────────
   app:
     image: alextselegidis/easyappointments:${EA_VERSION:-latest}
     container_name: easyappointments_app
     restart: unless-stopped
     depends_on:
+      storage-init:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
     environment:
@@ -55,10 +79,9 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-    # Apache + PHP responding (2xx–4xx). Do not use the REST API here — it 404s
-    # until after the web installer / DB setup completes.
+    # Apache running and serving HTTP (any status — installer may return 500 until storage/DB are ready).
     healthcheck:
-      test: ["CMD-SHELL", "for p in /index.php /; do c=$(curl -s -o /dev/null -w '%{http_code}' \"http://localhost$$p\"); echo \"$$c\" | grep -qE '^[234]' && exit 0; done; exit 1"]
+      test: ["CMD-SHELL", "pgrep apache2 >/dev/null && curl -sf --max-time 5 http://127.0.0.1/index.php >/dev/null 2>&1 || curl -s --max-time 5 -o /dev/null http://127.0.0.1/index.php"]
       interval: 15s
       timeout: 10s
       retries: 8

@@ -3,7 +3,7 @@
 
 COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
-.PHONY: install update backup preflight start stop restart logs logs-app logs-caddy shell-app shell-db status pull clean help
+.PHONY: install update backup preflight fix-storage start stop restart logs logs-app logs-caddy shell-app shell-db status pull clean help
 
 help:                  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -26,6 +26,9 @@ preflight:             ## Validate .env, DNS, and ports before deploy
 
 preflight-strict:      ## Preflight; fail on warnings (production gate)
 	@bash scripts/preflight.sh --strict
+
+fix-storage:           ## Seed empty app_storage volume (fixes HTTP 500)
+	@bash scripts/fix-storage.sh
 
 start:                 ## Start all services
 	@$(COMPOSE) up -d
