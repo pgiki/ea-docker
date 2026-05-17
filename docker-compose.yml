@@ -1,0 +1,177 @@
+###############################################################################
+# Easy!Appointments — Production Docker Compose
+# Usage: cp .env.example .env  →  edit .env  →  docker compose up -d
+###############################################################################
+
+services:
+
+  # ─── Application ───────────────────────────────────────────────────────────
+  app:
+    image: alextselegidis/easyappointments:${EA_VERSION:-latest}
+    container_name: easyappointments_app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # ── Core ──
+      BASE_URL:              ${BASE_URL}
+      LANGUAGE:              ${LANGUAGE:-english}
+      DEBUG_MODE:            ${DEBUG_MODE:-FALSE}
+
+      # ── Database ──
+      DB_HOST:               mysql
+      DB_NAME:               ${DB_NAME:-easyappointments}
+      DB_USERNAME:           ${DB_USERNAME:-easyapp}
+      DB_PASSWORD:           ${DB_PASSWORD}
+
+      # ── Mail ──
+      MAIL_PROTOCOL:         ${MAIL_PROTOCOL:-smtp}
+      MAIL_SMTP_HOST:        ${MAIL_SMTP_HOST:-smtp.example.org}
+      MAIL_SMTP_PORT:        ${MAIL_SMTP_PORT:-587}
+      MAIL_SMTP_AUTH:        ${MAIL_SMTP_AUTH:-1}
+      MAIL_SMTP_USER:        ${MAIL_SMTP_USER:-}
+      MAIL_SMTP_PASS:        ${MAIL_SMTP_PASS:-}
+      MAIL_SMTP_CRYPTO:      ${MAIL_SMTP_CRYPTO:-tls}
+      MAIL_SMTP_DEBUG:       ${MAIL_SMTP_DEBUG:-0}
+      MAIL_FROM_ADDRESS:     ${MAIL_FROM_ADDRESS:-noreply@example.org}
+      MAIL_FROM_NAME:        ${MAIL_FROM_NAME:-Easy Appointments}
+      MAIL_REPLY_TO_ADDRESS: ${MAIL_REPLY_TO_ADDRESS:-}
+
+      # ── Google Calendar (optional) ──
+      GOOGLE_SYNC_FEATURE:   ${GOOGLE_SYNC_FEATURE:-FALSE}
+      GOOGLE_CLIENT_ID:      ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET:  ${GOOGLE_CLIENT_SECRET:-}
+    volumes:
+      - app_storage:/var/www/html/storage
+    networks:
+      - internal
+      - proxy
+    # The official image exposes Apache on :80 — Caddy proxies in front of it.
+    expose:
+      - "80"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "curl", "-fsSL", "http://localhost/index.php/backend/api/v1/availabilities"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─── MySQL 8 ────────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: easyappointments_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE:      ${DB_NAME:-easyappointments}
+      MYSQL_USER:          ${DB_USERNAME:-easyapp}
+      MYSQL_PASSWORD:      ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro   # optional SQL seed files
+      - ./mysql/conf.d:/etc/mysql/conf.d:ro
+    networks:
+      - internal
+    expose:
+      - "3306"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost",
+             "-u", "${DB_USERNAME:-easyapp}", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # ─── Caddy reverse proxy ────────────────────────────────────────────────────
+  # Caddy automatically obtains and renews TLS certificates via Let's Encrypt.
+  # No separate certbot container is needed.
+  caddy:
+    image: caddy:2-alpine
+    container_name: easyappointments_caddy
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      DOMAIN:     ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # TLS certificates — must be a named volume (persisted)
+      - caddy_config:/config  # Caddy runtime config cache
+      - caddy_logs:/var/log/caddy
+    networks:
+      - proxy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ─── Automated DB backups ───────────────────────────────────────────────────
+  backup:
+    image: fradelg/mysql-cron-backup:latest
+    container_name: easyappointments_backup
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST:     mysql
+      MYSQL_PORT:     3306
+      MYSQL_DB:       ${DB_NAME:-easyappointments}
+      MYSQL_USER:     ${DB_USERNAME:-easyapp}
+      MYSQL_PASS:     ${DB_PASSWORD}
+      MAX_BACKUPS:    ${BACKUP_RETENTION_DAYS:-14}
+      INIT_BACKUP:    1                # run a backup immediately on start
+      CRON_TIME:      ${BACKUP_CRON:-0 2 * * *}  # default: 2 AM daily
+      GZIP_LEVEL:     9
+    volumes:
+      - ./backups:/backup
+    networks:
+      - internal
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+# ─── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  mysql_data:
+    driver: local
+  app_storage:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+  caddy_logs:
+    driver: local
+
+# ─── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  internal:          # DB ↔ App (not exposed to Caddy)
+    driver: bridge
+    internal: true
+  proxy:             # App ↔ Caddy
+    driver: bridge
