@@ -143,7 +143,7 @@ services:
       MYSQL_PASS:     ${DB_PASSWORD}
       MAX_BACKUPS:    ${BACKUP_RETENTION_DAYS:-14}
       INIT_BACKUP:    1                # run a backup immediately on start
-      CRON_TIME:      ${BACKUP_CRON:-0 2 * * *}  # default: 2 AM daily
+      CRON_TIME:      "${BACKUP_CRON:-0 2 * * *}"  # default: 2 AM daily
       GZIP_LEVEL:     9
     volumes:
       - ./backups:/backup

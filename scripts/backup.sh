@@ -43,8 +43,7 @@ done
 
 ENV_FILE="${INSTALL_DIR}/.env"
 [[ -f "$ENV_FILE" ]] || error ".env not found at ${ENV_FILE}"
-# shellcheck disable=SC1090
-source "$ENV_FILE"
+load_env_file "$ENV_FILE"
 
 RETENTION_DAYS="${RETENTION_DAYS:-${BACKUP_RETENTION_DAYS:-14}}"
 

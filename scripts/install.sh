@@ -158,8 +158,7 @@ echo ""
 success "═══════════════════════════════════════════════════════════════"
 success " Easy!Appointments ${EA_VERSION} is starting up!"
 success ""
-# shellcheck disable=SC1090
-source "$ENV_FILE" 2>/dev/null || true
+load_env_file "$ENV_FILE" 2>/dev/null || true
 success " URL: ${BASE_URL:-http://localhost}"
 success ""
 success " First run: visit the URL to complete the web installer."

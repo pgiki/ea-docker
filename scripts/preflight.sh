@@ -182,8 +182,7 @@ else
   fail ".env not found — run: cp .env.example .env && edit values"
 fi
 
-# shellcheck disable=SC1090
-source "$ENV_FILE"
+load_env_file "$ENV_FILE"
 
 HTTP_PORT="${HTTP_PORT:-80}"
 HTTPS_PORT="${HTTPS_PORT:-443}"

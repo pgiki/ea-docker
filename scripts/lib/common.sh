@@ -31,3 +31,27 @@ mysql_is_running() {
   local compose="$1"
   $compose ps mysql 2>/dev/null | grep -qiE 'running|up'
 }
+
+# Load .env without executing it (safe for values like cron: 0 2 * * *).
+load_env_file() {
+  local file="$1"
+  local line key val
+  [[ -f "$file" ]] || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+    key="${BASH_REMATCH[1]}"
+    val="${BASH_REMATCH[2]}"
+    val="${val#"${val%%[![:space:]]*}"}"
+    val="${val%"${val##*[![:space:]]}"}"
+    if [[ "$val" =~ ^\"(.*)\"$ ]]; then
+      val="${BASH_REMATCH[1]}"
+    elif [[ "$val" =~ ^\'(.*)\'$ ]]; then
+      val="${BASH_REMATCH[1]}"
+    fi
+    printf -v "$key" '%s' "$val"
+    export "$key"
+  done < "$file"
+}
