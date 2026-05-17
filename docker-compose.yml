@@ -41,7 +41,8 @@ services:
     environment:
       # ── Core ──
       BASE_URL:              ${BASE_URL}
-      LANGUAGE:              ${LANGUAGE:-english}
+      # EA_LANGUAGE in .env — do not use ${LANGUAGE}: the host GNU locale variable overrides .env.
+      LANGUAGE:              ${EA_LANGUAGE:-english}
       DEBUG_MODE:            ${DEBUG_MODE:-FALSE}
 
       # ── Database ──

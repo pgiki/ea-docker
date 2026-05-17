@@ -72,6 +72,87 @@ using_builtin_caddy() {
   [[ "${COMPOSE_PROFILES:-}" == *builtin-caddy* ]]
 }
 
+# Easy!Appointments language folder names (must match application/language/*).
+# Not locale codes (en_US, en-US, en).
+EA_VALID_LANGUAGES=(
+  albanian arabic bosnian bulgarian catalan chinese croatian czech danish dutch
+  english estonian finnish french german greek hebrew hindi hungarian italian
+  japanese latvian lithuanian luxembourgish marathi norwegian persian polish
+  portuguese portuguese-br romanian russian serbian slovak slovenian spanish
+  swedish thai traditional-chinese turkish ukrainian
+)
+
+# Read EA_LANGUAGE (or legacy LANGUAGE=) from .env without using the shell's GNU LANGUAGE var.
+ea_language_from_dotenv() {
+  local file="$1"
+  local line val
+  [[ -f "$file" ]] || { echo "english"; return; }
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if [[ "$line" =~ ^EA_LANGUAGE=(.*)$ ]]; then
+      val="${BASH_REMATCH[1]}"
+      val="${val#"${val%%[![:space:]]*}"}"
+      val="${val%"${val##*[![:space:]]}"}"
+      val="${val#\"}"; val="${val%\"}"
+      val="${val#\'}"; val="${val%\'}"
+      echo "$val"
+      return
+    fi
+  done < "$file"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if [[ "$line" =~ ^LANGUAGE=(.*)$ ]]; then
+      val="${BASH_REMATCH[1]}"
+      val="${val#"${val%%[![:space:]]*}"}"
+      val="${val%"${val##*[![:space:]]}"}"
+      val="${val#\"}"; val="${val%\"}"
+      val="${val#\'}"; val="${val%\'}"
+      echo "$val"
+      return
+    fi
+  done < "$file"
+  echo "english"
+}
+
+# After load_env_file: prefer EA_LANGUAGE; ignore invalid exported GNU LANGUAGE.
+ea_language_setting() {
+  if [[ -n "${EA_LANGUAGE:-}" ]]; then
+    printf '%s' "$EA_LANGUAGE"
+    return
+  fi
+  if [[ -n "${LANGUAGE:-}" ]] && language_is_valid "$LANGUAGE"; then
+    printf '%s' "$LANGUAGE"
+    return
+  fi
+  printf '%s' "english"
+}
+
+# Return 0 when LANGUAGE is a valid EA folder name; set EA_LANGUAGE_ISSUE on failure.
+language_is_valid() {
+  local lang="${1:-}"
+  EA_LANGUAGE_ISSUE=""
+  if [[ -z "$lang" ]]; then
+    EA_LANGUAGE_ISSUE="LANGUAGE is empty"
+    return 1
+  fi
+  if [[ "$lang" == *:* ]] || [[ "$lang" == */* ]]; then
+    EA_LANGUAGE_ISSUE="LANGUAGE contains invalid characters (${lang})"
+    return 1
+  fi
+  if [[ "$lang" =~ ^[a-z]{2}(_[A-Z]{2})?$ ]] || [[ "$lang" =~ ^[a-z]{2}-[A-Z]{2}$ ]]; then
+    EA_LANGUAGE_ISSUE="LANGUAGE looks like a locale code (${lang}); use a folder name such as english"
+    return 1
+  fi
+  local item
+  for item in "${EA_VALID_LANGUAGES[@]}"; do
+    [[ "$lang" == "$item" ]] && return 0
+  done
+  EA_LANGUAGE_ISSUE="LANGUAGE is not a known folder name (${lang})"
+  return 1
+}
+
 # Install /etc/caddy/sites/<domain>.caddy for external Caddy mode.
 # Args: domain upstream_host upstream_port [sites_dir]
 install_host_caddy_site() {

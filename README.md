@@ -308,6 +308,24 @@ docker compose up -d --force-recreate app
 
 Then open your `BASE_URL` and complete the web installer. For details: `docker compose exec app cat /var/www/html/storage/logs/log-$(date +%Y-%m-%d).php` (with `DEBUG_MODE=TRUE` in `.env`).
 
+**`Unable to load the requested language file: language/en_US:...`**
+
+Even when `.env` says `LANGUAGE=english`, **Linux servers** often export GNU locale `LANGUAGE=en_US:en`. Docker Compose prefers that shell variable over `.env` for `${LANGUAGE:-english}`, so `config.php` becomes `const LANGUAGE = 'en_US:'`.
+
+Use **`EA_LANGUAGE`** in `.env` (this repo maps it to the container `LANGUAGE` env). Do **not** use `LANGUAGE=` in `.env` — that name collides with the host GNU locale.
+
+```bash
+# In .env (copy from .env.example if needed)
+EA_LANGUAGE=english
+# Comment out any legacy line: # LANGUAGE=english
+
+docker compose up -d --force-recreate app
+docker compose exec app grep 'const LANGUAGE' /var/www/html/config.php   # expect: english
+docker compose exec app printenv LANGUAGE                                 # expect: english
+```
+
+Also use folder names (`english`, `german`), not locale codes (`en_US`, `en-US`).
+
 **Backup: `PROCESS privilege` / tablespaces**
 
 Ensure `MYSQLDUMP_OPTS=--no-tablespaces` is set on the `backup` service (included in current `docker-compose.yml`).

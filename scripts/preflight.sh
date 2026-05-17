@@ -235,6 +235,20 @@ else
   success "DEBUG_MODE is not enabled"
 fi
 
+EA_LANG="$(ea_language_setting)"
+if language_is_valid "$EA_LANG"; then
+  success "EA_LANGUAGE=${EA_LANG}"
+else
+  fail "${EA_LANGUAGE_ISSUE} — set EA_LANGUAGE=english in .env (see README troubleshooting)"
+fi
+
+if [[ -f "$ENV_FILE" ]] && grep -q '^LANGUAGE=' "$ENV_FILE" && ! grep -q '^EA_LANGUAGE=' "$ENV_FILE"; then
+  warn ".env uses LANGUAGE= — rename to EA_LANGUAGE= (host GNU LANGUAGE locale overrides compose interpolation)"
+fi
+if [[ -n "${LANGUAGE:-}" ]] && ! language_is_valid "${LANGUAGE}"; then
+  warn "Shell LANGUAGE=${LANGUAGE} is set (GNU locale) — docker compose must use EA_LANGUAGE in .env, not \${LANGUAGE}"
+fi
+
 if [[ "${EA_VERSION:-latest}" == "latest" ]]; then
   warn "EA_VERSION=latest — pin a release tag in production"
 fi
