@@ -15,10 +15,11 @@ services:
     command:
       - |
         set -e
-        if [ ! -d /mnt/storage/logs ]; then
+        if [ ! -f /mnt/storage/.htaccess ]; then
           echo "Seeding app_storage from image..."
           cp -a /var/www/html/storage/. /mnt/storage/
           chown -R www-data:www-data /mnt/storage
+          touch /mnt/storage/.docker-seeded
           echo "Storage volume ready."
         else
           echo "Storage volume already initialized, skipping."

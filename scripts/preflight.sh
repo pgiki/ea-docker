@@ -185,8 +185,13 @@ fi
 load_env_file "$ENV_FILE"
 
 COMPOSE_PROFILES="${COMPOSE_PROFILES:-}"
+COMPOSE_FILE_VAR="${COMPOSE_FILE:-}"
 BUILTIN_CADDY=false
 [[ "$COMPOSE_PROFILES" == *builtin-caddy* ]] && BUILTIN_CADDY=true
+
+if [[ -n "$COMPOSE_FILE_VAR" ]] && [[ "$COMPOSE_FILE_VAR" == *builtin-caddy* ]] && [[ "$BUILTIN_CADDY" == "false" ]]; then
+  fail "COMPOSE_FILE includes docker-compose.builtin-caddy.yml but COMPOSE_PROFILES is not builtin-caddy — app port ${APP_UPSTREAM_PORT:-8086} will not be published. Remove COMPOSE_FILE from .env for external Caddy mode."
+fi
 
 HTTP_PORT="${HTTP_PORT:-80}"
 HTTPS_PORT="${HTTPS_PORT:-443}"

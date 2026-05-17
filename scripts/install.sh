@@ -189,6 +189,32 @@ elif using_builtin_caddy; then
   info "Skipping host Caddy site — COMPOSE_PROFILES includes builtin-caddy"
 fi
 
+if [[ -n "${COMPOSE_FILE:-}" ]] && [[ "$COMPOSE_FILE" == *builtin-caddy* ]] && ! using_builtin_caddy; then
+  warn "COMPOSE_FILE includes docker-compose.builtin-caddy.yml but COMPOSE_PROFILES is not builtin-caddy"
+  warn "This removes port ${APP_UPSTREAM_PORT:-8086} — comment out COMPOSE_FILE in .env, then: ${COMPOSE} up -d --force-recreate app"
+fi
+
+UPSTREAM_HOST="${APP_UPSTREAM_BIND:-127.0.0.1}"
+UPSTREAM_PORT="${APP_UPSTREAM_PORT:-8086}"
+if ! using_builtin_caddy; then
+  sleep 3
+  if (echo >/dev/tcp/"${UPSTREAM_HOST}"/"${UPSTREAM_PORT}") 2>/dev/null; then
+    success "App is listening on ${UPSTREAM_HOST}:${UPSTREAM_PORT}"
+    HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://${UPSTREAM_HOST}:${UPSTREAM_PORT}/index.php" || echo "000")
+    if [[ "$HTTP_CODE" == "500" ]]; then
+      warn "App returned HTTP 500 — run: make fix-storage (or: ./scripts/fix-storage.sh --force)"
+      warn "Then: DEBUG_MODE=TRUE in .env and check storage logs inside the app container"
+    elif [[ "$HTTP_CODE" =~ ^[234] ]]; then
+      success "App responded with HTTP ${HTTP_CODE}"
+    else
+      warn "App returned HTTP ${HTTP_CODE} on /index.php"
+    fi
+  else
+    warn "Nothing listening on ${UPSTREAM_HOST}:${UPSTREAM_PORT}"
+    warn "Run: docker compose ps   and ensure .env does not set COMPOSE_FILE to builtin-caddy.yml"
+  fi
+fi
+
 echo ""
 success "═══════════════════════════════════════════════════════════════"
 success " Easy!Appointments ${EA_VERSION} is starting up!"
@@ -196,6 +222,10 @@ success ""
 success " URL: ${BASE_URL:-http://localhost}"
 success ""
 success " First run: visit the URL to complete the web installer."
-success " Backend:   \${BASE_URL}/index.php/backend"
+if [[ -n "${BASE_URL:-}" ]]; then
+  success " Backend:   ${BASE_URL}/index.php/backend"
+else
+  success " Backend:   /index.php/backend"
+fi
 success " Logs:      ${COMPOSE} logs -f"
 success "═══════════════════════════════════════════════════════════════"

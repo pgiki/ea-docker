@@ -63,16 +63,11 @@ Your main Caddy keeps Let's Encrypt on 80/443. This stack only serves HTTP on `1
 
 ### Builtin Caddy (only if 80/443 are free)
 
-```bash
-# .env
-COMPOSE_PROFILES=builtin-caddy
-COMPOSE_FILE=docker-compose.yml:docker-compose.builtin-caddy.yml
-HTTP_PORT=80
-HTTPS_PORT=443
-```
+Do **not** set `COMPOSE_FILE` in `.env` for external mode — it can silently remove port 8086.
 
 ```bash
-docker compose up -d
+COMPOSE_PROFILES=builtin-caddy docker compose \
+  -f docker-compose.yml -f docker-compose.builtin-caddy.yml up -d
 ```
 
 ---
@@ -289,14 +284,26 @@ docker compose ps
 docker compose up -d --force-recreate storage-init app caddy
 ```
 
+**`curl: connection refused` on port 8086**
+
+The app is not published on the host. Check:
+
+```bash
+grep COMPOSE_FILE .env    # must be empty for external Caddy mode
+docker compose ps
+docker port easyappointments_app
+```
+
+If `COMPOSE_FILE` includes `docker-compose.builtin-caddy.yml`, remove that line and run `docker compose up -d --force-recreate app`.
+
 **HTTP 500 on `/` or `/index.php`**
 
-Usually an **empty `app_storage` volume** — it replaces the image's `storage/` folder (logs, cache, sessions). Seed it:
+Usually an **empty or partial `app_storage` volume**. Re-seed and restart:
 
 ```bash
 make fix-storage
-# or: ./scripts/fix-storage.sh
-docker compose up -d --force-recreate app caddy
+./scripts/fix-storage.sh --force
+docker compose up -d --force-recreate app
 ```
 
 Then open your `BASE_URL` and complete the web installer. For details: `docker compose exec app cat /var/www/html/storage/logs/log-$(date +%Y-%m-%d).php` (with `DEBUG_MODE=TRUE` in `.env`).
