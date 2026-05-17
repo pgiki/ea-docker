@@ -3,7 +3,8 @@
 # install.sh — First-time Easy!Appointments deployment
 #
 # Usage:
-#   ./scripts/install.sh [--version 1.5.2] [--dir /opt/easyappointments] [--skip-preflight]
+#   ./scripts/install.sh [--version 1.5.2] [--dir /opt/easyappointments]
+#                        [--skip-preflight] [--skip-caddy-site]
 #
 # The running application comes from the official Docker image (see .env EA_VERSION).
 # An optional source tree under ./src/ is downloaded for reference only; it is not
@@ -28,6 +29,7 @@ step()    { echo -e "\n${BOLD}▶ $*${NC}"; }
 EA_VERSION=""
 INSTALL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SKIP_PREFLIGHT=false
+SKIP_CADDY_SITE=false
 GITHUB_REPO="alextselegidis/easyappointments"
 GITHUB_API="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
 
@@ -36,8 +38,9 @@ while [[ $# -gt 0 ]]; do
     --version|-v) EA_VERSION="$2"; shift 2 ;;
     --dir|-d)     INSTALL_DIR="$2"; shift 2 ;;
     --skip-preflight) SKIP_PREFLIGHT=true; shift ;;
+    --skip-caddy-site) SKIP_CADDY_SITE=true; shift ;;
     --help|-h)
-      echo "Usage: $0 [--version <tag>] [--dir <path>]"
+      echo "Usage: $0 [--version <tag>] [--dir <path>] [--skip-preflight] [--skip-caddy-site]"
       exit 0 ;;
     *) error "Unknown option: $1" ;;
   esac
@@ -154,11 +157,42 @@ $COMPOSE pull
 step "Starting stack"
 $COMPOSE up -d
 
+load_env_file "$ENV_FILE" 2>/dev/null || true
+
+if [[ "$SKIP_CADDY_SITE" != "true" ]] && ! using_builtin_caddy; then
+  step "Configuring host Caddy site"
+  SITE_DOMAIN="${DOMAIN:-}"
+  if [[ -z "$SITE_DOMAIN" && -n "${BASE_URL:-}" ]]; then
+    if [[ "$BASE_URL" =~ ^https?://([^/:]+) ]]; then
+      SITE_DOMAIN="${BASH_REMATCH[1]}"
+    fi
+  fi
+  UPSTREAM_HOST="${APP_UPSTREAM_BIND:-127.0.0.1}"
+  UPSTREAM_PORT="${APP_UPSTREAM_PORT:-8086}"
+  SITES_DIR="${CADDY_SITES_DIR:-/etc/caddy/sites}"
+
+  if [[ -z "$SITE_DOMAIN" ]] || [[ "$SITE_DOMAIN" == localhost ]] || [[ "$SITE_DOMAIN" == 127.0.0.1 ]]; then
+    warn "Skipping host Caddy site — set DOMAIN in .env to your public hostname"
+  elif SITE_FILE=$(install_host_caddy_site "$SITE_DOMAIN" "$UPSTREAM_HOST" "$UPSTREAM_PORT" "$SITES_DIR"); then
+    success "Wrote ${SITE_FILE}"
+    if reload_host_caddy; then
+      success "Reloaded host Caddy"
+    else
+      warn "Could not reload Caddy automatically — run: sudo systemctl reload caddy"
+      warn "Ensure ${SITES_DIR} is imported from /etc/caddy/Caddyfile (e.g. import sites/*)"
+    fi
+  else
+    warn "Could not write host Caddy site (need sudo?)"
+    warn "Add manually: ${SITES_DIR}/${SITE_DOMAIN}.caddy → reverse_proxy ${UPSTREAM_HOST}:${UPSTREAM_PORT}"
+  fi
+elif using_builtin_caddy; then
+  info "Skipping host Caddy site — COMPOSE_PROFILES includes builtin-caddy"
+fi
+
 echo ""
 success "═══════════════════════════════════════════════════════════════"
 success " Easy!Appointments ${EA_VERSION} is starting up!"
 success ""
-load_env_file "$ENV_FILE" 2>/dev/null || true
 success " URL: ${BASE_URL:-http://localhost}"
 success ""
 success " First run: visit the URL to complete the web installer."

@@ -2,69 +2,60 @@
 # Caddy reverse proxy for Easy!Appointments
 #
 # Environment variables (set in .env):
-#   DOMAIN     — your public domain, e.g. appointments.example.com
-#                Use "localhost" for local-only / behind another TLS terminator.
-#   ACME_EMAIL — email for Let's Encrypt registration and expiry notices
+#   DOMAIN     — public hostname, e.g. book.example.com
+#   ACME_EMAIL — Let's Encrypt contact email
 #
-# Caddy automatically obtains and renews TLS certificates via Let's Encrypt
-# when DOMAIN is a real public hostname and ports 80/443 are reachable.
+# Automatic TLS (Let's Encrypt) requires the internet to reach this server on
+# ports 80 and 443. In .env set HTTP_PORT=80 and HTTPS_PORT=443 unless you
+# DNAT/firewall-forward public 80/443 to those container ports.
 ###############################################################################
 
 {
-    # Global options
-    email {$ACME_EMAIL:admin@example.com}
+	email {$ACME_EMAIL:admin@example.com}
 
-    # Uncomment to use the Let's Encrypt staging CA while testing:
-    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+	# Uncomment while testing to avoid Let's Encrypt rate limits:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
 }
 
 {$DOMAIN:localhost} {
 
-    # ── Reverse proxy to the app container ─────────────────────────────────
-    reverse_proxy app:80 {
-        header_up Host              {host}
-        header_up X-Real-IP         {remote_host}
-        header_up X-Forwarded-For   {remote_host}
-        header_up X-Forwarded-Proto {scheme}
+	reverse_proxy app:80 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
 
-        transport http {
-            read_timeout  300s
-            write_timeout 300s
-            dial_timeout   75s
-        }
-    }
+		transport http {
+			read_timeout  300s
+			write_timeout 300s
+			dial_timeout  75s
+		}
+	}
 
-    # ── Security headers ────────────────────────────────────────────────────
-    @productionHost not host localhost 127.0.0.1 ::1
-    header @productionHost Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-    header {
-        X-Content-Type-Options    nosniff
-        X-Frame-Options           SAMEORIGIN
-        X-XSS-Protection          "1; mode=block"
-        Referrer-Policy           strict-origin-when-cross-origin
-        Permissions-Policy        "geolocation=(), microphone=(), camera=()"
-        -Server
-    }
+	@productionHost not host localhost 127.0.0.1 ::1
+	header @productionHost Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+	header {
+		X-Content-Type-Options   nosniff
+		X-Frame-Options          SAMEORIGIN
+		X-XSS-Protection         "1; mode=block"
+		Referrer-Policy          strict-origin-when-cross-origin
+		Permissions-Policy       "geolocation=(), microphone=(), camera=()"
+		-Server
+	}
 
-    # ── Block dot-segment paths (/.env, /.git) — same rule nginx used ───────
-    @hiddenFiles path_regexp dotseg /\/\.[^/]+
-    respond @hiddenFiles 404
+	@hiddenFiles path_regexp dotseg /\/\.[^/]+
+	respond @hiddenFiles 404
 
-    # ── Upload size limit (adjust if you need larger file uploads) ─────────
-    request_body {
-        max_size 64MB
-    }
+	request_body {
+		max_size 64MB
+	}
 
-    # ── Compression ────────────────────────────────────────────────────────
-    encode zstd gzip
+	encode zstd gzip
 
-    # ── Access logging ──────────────────────────────────────────────────────
-    log {
-        output file /var/log/caddy/access.log {
-            roll_size    10MiB
-            roll_keep    5
-            roll_keep_for 720h
-        }
-        format json
-    }
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size     10MiB
+			roll_keep     5
+			roll_keep_for 720h
+		}
+		format json
+	}
 }

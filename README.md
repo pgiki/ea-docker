@@ -10,10 +10,70 @@ Self-hosted appointment scheduler · [GitHub](https://github.com/alextselegidis/
 |---|---|---|
 | **app** | `alextselegidis/easyappointments` | PHP application (Apache built-in) |
 | **mysql** | `mysql:8.0` | Relational database |
-| **caddy** | `caddy:2-alpine` | Reverse proxy, automatic TLS (Let's Encrypt) |
+| **caddy** | `caddy:2-alpine` | Optional — only with `COMPOSE_PROFILES=builtin-caddy` |
 | **backup** | `fradelg/mysql-cron-backup` | Scheduled database backups |
 
 Application code runs from the **Docker image** (`EA_VERSION` in `.env`). The optional `./src/` directory is a local reference copy only.
+
+---
+
+## Reverse proxy: existing Caddy on 80/443 (recommended)
+
+If **another Caddy already uses ports 80 and 443**, do not run a second one in this stack. Use **external proxy mode** (the default):
+
+1. In `.env` leave `COMPOSE_PROFILES` empty (or comment it out).
+2. Set `APP_UPSTREAM_PORT=8086` (or any free local port).
+3. Start Easy!Appointments only:
+
+```bash
+docker compose up -d
+# Stops the old bundled caddy container if it exists:
+docker rm -f easyappointments_caddy 2>/dev/null || true
+```
+
+4. **install.sh** creates `/etc/caddy/sites/<DOMAIN>.caddy` automatically (needs sudo). Or add manually (see `caddy/external-proxy.Caddyfile.example`):
+
+```caddy
+book.fikashop.app {
+    reverse_proxy 127.0.0.1:8086
+}
+```
+
+Your main `/etc/caddy/Caddyfile` must import that directory, for example:
+
+```caddy
+import /etc/caddy/sites/*
+```
+
+5. Reload your main Caddy (install.sh tries this for you):
+
+```bash
+caddy reload --config /etc/caddy/Caddyfile
+# or however you manage your existing instance
+```
+
+6. Ensure `BASE_URL=https://book.fikashop.app` matches that hostname (no `:8086` in the URL).
+
+Your main Caddy keeps Let's Encrypt on 80/443. This stack only serves HTTP on `127.0.0.1:8086`.
+
+### Main Caddy in Docker?
+
+- **Same host, Caddy on host network / host ports:** use `reverse_proxy 127.0.0.1:8086` or `172.17.0.1:8086`.
+- **Caddy in another compose project:** use `docker-compose.docker-proxy.yml` and `reverse_proxy easyappointments_app:80` on a shared network (documented in the example file).
+
+### Builtin Caddy (only if 80/443 are free)
+
+```bash
+# .env
+COMPOSE_PROFILES=builtin-caddy
+COMPOSE_FILE=docker-compose.yml:docker-compose.builtin-caddy.yml
+HTTP_PORT=80
+HTTPS_PORT=443
+```
+
+```bash
+docker compose up -d
+```
 
 ---
 
@@ -25,7 +85,8 @@ easyappointments/
 ├── .env.example          ← copy to .env and edit
 ├── Makefile              ← convenience shortcuts
 ├── caddy/
-│   └── Caddyfile         ← reverse proxy + TLS
+│   ├── Caddyfile                          ← bundled Caddy (builtin-caddy profile only)
+│   └── external-proxy.Caddyfile.example   ← snippet for your main Caddy
 ├── mysql/
 │   ├── conf.d/production.cnf
 │   └── init/             ← optional seed SQL
@@ -92,7 +153,10 @@ Open your `BASE_URL` and follow the setup wizard.
 
 ### 6 — HTTPS
 
-With a real `DOMAIN`, DNS pointing at this server, and ports **80/443** open, Caddy obtains a Let's Encrypt certificate automatically on first start. Ensure `BASE_URL` uses `https://` and matches `DOMAIN`.
+- **External Caddy:** TLS is handled by your existing Caddy — add the site block from step 5 in [Reverse proxy](#reverse-proxy-existing-caddy-on-80443-recommended).
+- **Builtin Caddy:** With `COMPOSE_PROFILES=builtin-caddy` and free ports 80/443, this stack obtains Let's Encrypt certificates automatically.
+
+Ensure `BASE_URL` uses `https://` and matches `DOMAIN`.
 
 ---
 
@@ -241,13 +305,39 @@ Then open your `BASE_URL` and complete the web installer. For details: `docker c
 
 Ensure `MYSQLDUMP_OPTS=--no-tablespaces` is set on the `backup` service (included in current `docker-compose.yml`).
 
-**Caddy / TLS issues**
+**Caddy / TLS / Let's Encrypt fails (`tls: internal error`)**
+
+Let's Encrypt always connects to your server on **ports 80 and 443** (not custom ports like 8086/8087).
+
+1. In `.env` set `HTTP_PORT=80` and `HTTPS_PORT=443` (defaults in `.env.example`).
+2. Stop any other web server using 80/443 on the host:
+
+```bash
+sudo ss -tlnp | grep -E ':80 |:443 '
+```
+
+3. Open the firewall for 80/tcp and 443/tcp.
+4. Recreate Caddy:
+
+```bash
+docker compose up -d --force-recreate caddy
+docker compose logs caddy --tail=30
+```
+
+If you must keep Caddy on 8086/8087, forward traffic on the host, for example:
+
+```bash
+sudo iptables -t nat -A PREROUTING -p tcp --dport 80  -j REDIRECT --to-port 8086
+sudo iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 8087
+```
+
+Or terminate TLS on an upstream proxy and set `DOMAIN=localhost` / HTTP-only Caddy (no automatic certificates).
 
 ```bash
 docker compose logs caddy --tail=50
 ```
 
-Check `DOMAIN`, DNS, and that nothing else binds ports 80/443.
+Check `DOMAIN`, `ACME_EMAIL`, and DNS.
 
 **502 from Caddy**
 

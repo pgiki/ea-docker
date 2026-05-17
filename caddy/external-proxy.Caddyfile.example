@@ -1,0 +1,48 @@
+###############################################################################
+# Add this site block to your EXISTING Caddy (the one on ports 80/443).
+#
+# 1. Easy!Appointments stack runs WITHOUT its bundled Caddy (default):
+#      docker compose up -d
+#    App listens on 127.0.0.1:APP_UPSTREAM_PORT (default 8086).
+#
+# 2. Copy/adapt this block into your main Caddyfile, then reload Caddy:
+#      caddy reload --config /path/to/Caddyfile
+#
+# Replace the domain and upstream if you changed APP_UPSTREAM_PORT in .env.
+###############################################################################
+
+book.fikashop.app {
+
+	reverse_proxy 127.0.0.1:8086 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	# Optional: same security headers as the bundled Caddyfile
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	encode zstd gzip
+}
+
+###############################################################################
+# If your main Caddy also runs in Docker (same host), use one of these instead
+# of 127.0.0.1:
+#
+#   Linux (Docker bridge gateway):
+#     reverse_proxy 172.17.0.1:8086
+#
+#   Docker Desktop / with extra_hosts "host.docker.internal:host-gateway":
+#     reverse_proxy host.docker.internal:8086
+#
+#   Shared Docker network (recommended for Docker-to-Docker):
+#     1. docker network create ea-proxy
+#     2. In this project's .env:  COMPOSE_FILE=docker-compose.yml:docker-compose.docker-proxy.yml
+#        (see docker-compose.docker-proxy.yml)
+#     3. Attach your main Caddy container to network ea-proxy
+#     4. reverse_proxy easyappointments_app:80
+###############################################################################

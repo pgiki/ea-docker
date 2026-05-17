@@ -1,0 +1,25 @@
+###############################################################################
+# Optional overlay when your main Caddy runs in Docker on the same host.
+#
+# Usage:
+#   docker network create ea-proxy
+#   # attach your existing Caddy container: docker network connect ea-proxy <caddy-container>
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.docker-proxy.yml docker compose up -d
+#
+# Then in your main Caddyfile use:
+#   reverse_proxy easyappointments_app:80
+###############################################################################
+
+services:
+  app:
+    ports: !reset []
+    expose:
+      - "80"
+    networks:
+      - internal
+      - ea-proxy
+
+networks:
+  ea-proxy:
+    name: ea-proxy
+    external: true

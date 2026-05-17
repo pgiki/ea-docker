@@ -184,8 +184,14 @@ fi
 
 load_env_file "$ENV_FILE"
 
+COMPOSE_PROFILES="${COMPOSE_PROFILES:-}"
+BUILTIN_CADDY=false
+[[ "$COMPOSE_PROFILES" == *builtin-caddy* ]] && BUILTIN_CADDY=true
+
 HTTP_PORT="${HTTP_PORT:-80}"
 HTTPS_PORT="${HTTPS_PORT:-443}"
+APP_UPSTREAM_BIND="${APP_UPSTREAM_BIND:-127.0.0.1}"
+APP_UPSTREAM_PORT="${APP_UPSTREAM_PORT:-8086}"
 
 # ─── Required variables ────────────────────────────────────────────────────────
 step "Environment variables"
@@ -209,7 +215,12 @@ check_required BASE_URL
 check_required DB_PASSWORD
 check_required DB_ROOT_PASSWORD
 check_required DOMAIN
-check_required ACME_EMAIL
+if [[ "$BUILTIN_CADDY" == "true" ]]; then
+  check_required ACME_EMAIL
+else
+  info "External Caddy mode (COMPOSE_PROFILES does not include builtin-caddy)"
+  success "ACME_EMAIL not required in this stack — TLS is on your main Caddy"
+fi
 check_required MAIL_SMTP_HOST
 check_required MAIL_FROM_ADDRESS
 
@@ -292,13 +303,17 @@ if [[ "$LOCAL_DEPLOY" == "false" ]]; then
 fi
 
 # ─── Ports ───────────────────────────────────────────────────────────────────
-step "Ports (HTTP ${HTTP_PORT}, HTTPS ${HTTPS_PORT})"
+if [[ "$BUILTIN_CADDY" == "true" ]]; then
+  step "Ports (builtin Caddy — HTTP ${HTTP_PORT}, HTTPS ${HTTPS_PORT})"
+else
+  step "Ports (external Caddy — app upstream ${APP_UPSTREAM_BIND}:${APP_UPSTREAM_PORT})"
+fi
 
 check_port() {
   local port="$1" label="$2"
   if port_in_use "$port"; then
     if [[ "$MODE" == "install" ]]; then
-      fail "Port ${port} (${label}) is already in use — free it or change HTTP_PORT/HTTPS_PORT in .env"
+      fail "Port ${port} (${label}) is already in use"
     else
       warn "Port ${port} (${label}) is in use (expected if the stack is already running)"
     fi
@@ -311,8 +326,25 @@ check_port() {
   fi
 }
 
-check_port "$HTTP_PORT" "HTTP"
-check_port "$HTTPS_PORT" "HTTPS"
+if [[ "$BUILTIN_CADDY" == "true" ]]; then
+  check_port "$HTTP_PORT" "HTTP"
+  check_port "$HTTPS_PORT" "HTTPS"
+  if [[ "$LOCAL_DEPLOY" == "false" ]]; then
+    if [[ "$HTTP_PORT" != "80" || "$HTTPS_PORT" != "443" ]]; then
+      warn "HTTP_PORT=${HTTP_PORT} HTTPS_PORT=${HTTPS_PORT} — Let's Encrypt requires public 80/443 unless you DNAT"
+    else
+      success "HTTP_PORT/HTTPS_PORT are 80/443"
+    fi
+  fi
+else
+  check_port "$APP_UPSTREAM_PORT" "app upstream"
+  if port_in_use 80 || port_in_use 443; then
+    success "Host ports 80/443 in use — expected when your main Caddy handles TLS"
+  else
+    warn "Ports 80/443 are free — ensure your main Caddy is running and proxies to ${APP_UPSTREAM_BIND}:${APP_UPSTREAM_PORT}"
+  fi
+  info "Add caddy/external-proxy.Caddyfile.example to your main Caddy, then: caddy reload"
+fi
 
 # ─── Running stack (update mode) ─────────────────────────────────────────────
 if [[ "$MODE" == "update" ]]; then

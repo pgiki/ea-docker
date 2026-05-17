@@ -1,0 +1,12 @@
+###############################################################################
+# Overlay for COMPOSE_PROFILES=builtin-caddy — do not publish app on host port.
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.builtin-caddy.yml
+#   COMPOSE_PROFILES=builtin-caddy
+###############################################################################
+
+services:
+  app:
+    ports: !reset []
+    expose:
+      - "80"
